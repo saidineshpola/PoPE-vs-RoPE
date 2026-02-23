@@ -40,7 +40,7 @@ eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
-wandb_log = False # disabled by default
+wandb_log = True # disabled by default
 wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
@@ -54,6 +54,8 @@ n_head = 12
 n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
+use_rope = False # if True, use Rotary Position Embedding (RoPE) instead of learned positional embeddings
+use_pope = False # if True, use Polar Coordinate Position Embedding (PoPE) from arxiv.org/abs/2509.10534
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
 max_iters = 600000 # total number of training iterations
@@ -145,7 +147,7 @@ if os.path.exists(meta_path):
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
+                  bias=bias, vocab_size=None, dropout=dropout, use_rope=use_rope, use_pope=use_pope)
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -193,7 +195,25 @@ if block_size < model.config.block_size:
 model.to(device)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
-scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
+# Create a no-op scaler wrapper for CPU to avoid CUDA-specific scaler issues
+class NoOpScaler:
+    def scale(self, loss):
+        return loss
+    def unscale_(self, optimizer):
+        pass
+    def step(self, optimizer):
+        optimizer.step()
+    def update(self):
+        pass
+
+if device_type == 'cuda' and dtype == 'float16':
+    scaler = torch.amp.GradScaler('cuda', enabled=True)
+elif device_type == 'cpu':
+    # On CPU, use a no-op scaler to avoid CUDA-specific operations
+    scaler = NoOpScaler()
+else:
+    # For bfloat16 or float32 on CUDA, scaler is effectively a no-op
+    scaler = torch.amp.GradScaler('cuda', enabled=False)
 
 # optimizer
 optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
@@ -262,12 +282,16 @@ while True:
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
-        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        train_ppl = math.exp(losses['train'])
+        val_ppl = math.exp(losses['val'])
+        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f} | train ppl {train_ppl:.2f}, val ppl {val_ppl:.2f}")
         if wandb_log:
             wandb.log({
                 "iter": iter_num,
                 "train/loss": losses['train'],
                 "val/loss": losses['val'],
+                "train/perplexity": train_ppl,
+                "val/perplexity": val_ppl,
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
@@ -331,6 +355,27 @@ while True:
     # termination conditions
     if iter_num > max_iters:
         break
+
+# final evaluation and summary
+if master_process:
+    losses = estimate_loss()
+    train_ppl = math.exp(losses['train'])
+    val_ppl = math.exp(losses['val'])
+    print("\n" + "="*60)
+    print("TRAINING COMPLETE - Final Results")
+    print("="*60)
+    print(f"  Val loss:  {losses['val']:.4f}")
+    print(f"  Val perplexity: {val_ppl:.2f}")
+    print(f"  Train loss: {losses['train']:.4f}")
+    print(f"  Train perplexity: {train_ppl:.2f}")
+    print("="*60)
+    if wandb_log:
+        wandb.log({
+            "final/val_loss": losses['val'],
+            "final/val_perplexity": val_ppl,
+            "final/train_loss": losses['train'],
+            "final/train_perplexity": train_ppl,
+        })
 
 if ddp:
     destroy_process_group()

@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  nanogpt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nanogpt:latest
+    container_name: nanogpt
+    volumes:
+      # Mount data directory for datasets
+      - ./data:/app/data
+      # Mount output directory for checkpoints and logs
+      - ./out:/app/out
+      # Mount output directory for shakespeare-char experiments
+      - ./out-shakespeare-char:/app/out-shakespeare-char
+      # Mount config directory
+      - ./config:/app/config
+      # Mount train.py and other Python files for live editing
+      - ./train.py:/app/train.py
+      - ./model.py:/app/model.py
+      - ./configurator.py:/app/configurator.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Set device to CPU by default (change to cuda if using GPU)
+      - DEVICE=cpu
+    # Uncomment the following section for GPU support (requires nvidia-container-toolkit)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    # Then change DEVICE environment variable to: cuda
+    # Or pass --device=cuda when running train.py
+    
+    # Default command - can be overridden when running docker-compose run
+    # Examples:
+    #   docker-compose run nanogpt python train.py config/train_shakespeare_char.py
+    #   docker-compose run nanogpt python sample.py --out_dir=out-shakespeare-char
+    #   # Mac-optimized command (CPU, smaller model, faster training):
+    #   docker-compose run nanogpt python train.py config/train_shakespeare_char.py --device=cpu --compile=False --eval_iters=20 --log_interval=1 --block_size=64 --batch_size=12 --n_layer=4 --n_head=4 --n_embd=128 --max_iters=2000 --lr_decay_iters=2000 --dropout=0.0
+    command: python train.py --help
+    
+    # Keep container running for interactive use
+    stdin_open: true
+    tty: true
+
+# run comand
+# docker-compose run nanogpt python train.py config/train_shakespeare_char.py --device=cpu --compile=False --eval_iters=20 --log_interval=1 --block_size=64 --batch_size=12 --n_layer=4 --n_head=4 --n_embd=128 --max_iters=2000 --lr_decay_iters=2000 --dropout=0.0

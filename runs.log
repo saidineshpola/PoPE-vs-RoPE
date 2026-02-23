@@ -1,0 +1,35 @@
+# PoPE
+iter 1980: loss 1.0493, time 1451.70ms, mfu 0.25%
+iter 1990: loss 1.0919, time 1454.26ms, mfu 0.25%
+step 2000: train loss 0.9960, val loss 1.4451 | train ppl 2.71, val ppl 4.24
+iter 2000: loss 1.0710, time 155528.09ms, mfu 0.23%
+
+============================================================
+TRAINING COMPLETE - Final Results
+============================================================
+  Val loss:  1.4385
+  Val perplexity: 4.21
+  Train loss: 0.9960
+  Train perplexity: 2.71
+============================================================
+# RoPE
+
+============================================================
+TRAINING COMPLETE - Final Results
+============================================================
+  Val loss:  1.4591
+  Val perplexity: 4.30
+  Train loss: 1.0153
+  Train perplexity: 2.76
+=================================================
+
+# Simple Positional Encoding
+
+============================================================
+TRAINING COMPLETE - Final Results
+============================================================
+  Val loss:  1.4500
+  Val perplexity: 4.26
+  Train loss: 1.0732
+  Train perplexity: 2.92
+=================================================
